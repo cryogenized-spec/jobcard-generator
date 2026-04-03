@@ -1,0 +1,18 @@
+{
+  "name": "Vanguard Blade & Bolt Job Card Generator",
+  "short_name": "VBB Job Cards",
+  "description": "Installable static generator for workshop job cards that outputs LuaLaTeX.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#eef1f4",
+  "theme_color": "#1d2328",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
