@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#1d2328" />
+  <meta name="description" content="Installable PWA paperwork generator for Vanguard Blade & Bolt. Generates LuaLaTeX for stock withdrawals, job cards, and invoices from one shared workflow." />
+  <title>Vanguard Blade &amp; Bolt — Workshop Paperwork Generator</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="icon.svg" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="shell">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">Static paperwork generator · installable PWA · offline-capable</p>
+        <h1>Vanguard Blade &amp; Bolt Workshop Paperwork</h1>
+        <p class="sub">
+          One shared workflow for stock withdrawals, repair job cards, and invoices. Business details remain fixed. NeonSales loads as the default client.
+        </p>
+      </div>
+      <div class="hero-note">
+        <strong>Version 2</strong>
+        <span>Shared line items, one-tap copy, downloadable <code>.tex</code>, and installable offline use.</span>
+        <button id="installBtn" type="button" class="secondary install-btn" hidden>Install app</button>
+      </div>
+    </header>
+
+    <main class="grid">
+      <section class="panel form-panel">
+        <div class="mode-switch" role="tablist" aria-label="Document type selector">
+          <button type="button" class="mode-btn active" data-mode-btn="withdrawal">Stock withdrawal</button>
+          <button type="button" class="mode-btn" data-mode-btn="jobcard">Job card</button>
+          <button type="button" class="mode-btn" data-mode-btn="invoice">Invoice</button>
+        </div>
+
+        <div class="section-head">
+          <h2>Document control</h2>
+          <span class="mini-note">Use one form, then switch document modes as needed.</span>
+        </div>
+        <div class="form-grid three">
+          <label data-modes="withdrawal">
+            Withdrawal ref
+            <input id="withdrawalNumber" type="text" placeholder="NS-WD-2026-001" />
+          </label>
+          <label data-modes="jobcard">
+            Job card number
+            <input id="jobCardNumber" type="text" placeholder="NS-JC-2026-002" />
+          </label>
+          <label data-modes="invoice">
+            Invoice number
+            <input id="invoiceNumber" type="text" placeholder="VBB-2026-001" />
+          </label>
+          <label data-modes="withdrawal jobcard invoice">
+            Issued date
+            <input id="issuedDate" type="text" placeholder="03.04.2026" />
+          </label>
+          <label data-modes="jobcard invoice">
+            Completion date
+            <input id="completionDate" type="text" placeholder="03.04.2026" />
+          </label>
+          <label data-modes="invoice">
+            Due date
+            <input id="dueDate" type="text" placeholder="03.04.2026" />
+          </label>
+          <label data-modes="withdrawal jobcard invoice">
+            Status
+            <input id="status" type="text" placeholder="Completed" />
+          </label>
+          <label data-modes="withdrawal jobcard invoice">
+            Technician / prepared by
+            <input id="technician" type="text" placeholder="Gareth Van Tonder" />
+          </label>
+          <label data-modes="withdrawal jobcard invoice">
+            Logo filename
+            <input id="logoFile" type="text" placeholder="logo-square.png" />
+          </label>
+        </div>
+
+        <div class="section-head">
+          <h2>Client details</h2>
+          <span class="mini-note">Defaults load as NeonSales.</span>
+        </div>
+        <div class="form-grid">
+          <label>
+            Client / store / recipient
+            <input id="clientName" type="text" placeholder="NeonSales" />
+          </label>
+          <label>
+            Contact
+            <input id="clientContact" type="text" placeholder="0328800863" />
+          </label>
+          <label>
+            Address
+            <textarea id="clientAddress" rows="3" placeholder="19 Mahatma Ghandi Street, KwaDukuza, KwaZulu-Natal, South Africa"></textarea>
+          </label>
+        </div>
+
+        <div class="section-head">
+          <h2>Document notes</h2>
+          <span class="mini-note">Only the active document uses the relevant note fields.</span>
+        </div>
+        <div class="form-grid">
+          <label data-modes="withdrawal">
+            Withdrawal purpose / notes
+            <textarea id="withdrawalPurpose" rows="3" placeholder="Purpose of stock withdrawal"></textarea>
+          </label>
+          <label data-modes="jobcard">
+            Job summary
+            <textarea id="jobSummary" rows="4" placeholder="Service and repair work completed..."></textarea>
+          </label>
+          <label data-modes="invoice">
+            Invoice notes
+            <textarea id="invoiceNotes" rows="4" placeholder="Notes to appear on the invoice"></textarea>
+          </label>
+          <label data-modes="withdrawal jobcard">
+            Parts / materials referenced
+            <textarea id="materials" rows="5" placeholder="One line per material"></textarea>
+          </label>
+        </div>
+
+        <div class="assets-header">
+          <div>
+            <h2>Line items / units</h2>
+            <p class="mini-note">Supports serialized equipment and unserialized items like HPA hand pumps, accessories, or spares.</p>
+          </div>
+          <button id="addAssetBtn" type="button" class="secondary">+ Add line</button>
+        </div>
+        <div id="assetsContainer" class="assets"></div>
+
+        <div class="actions">
+          <button id="generateBtn" type="button">Generate active document</button>
+          <button id="downloadBtn" type="button" class="secondary">Download .tex</button>
+          <button id="resetBtn" type="button" class="ghost">Reset defaults</button>
+        </div>
+      </section>
+
+      <section class="panel output-panel">
+        <div class="output-header">
+          <div>
+            <h2 id="outputTitle">Generated stock withdrawal LuaLaTeX</h2>
+            <p class="mini-note">Autosaves locally in this browser.</p>
+          </div>
+          <div class="output-tools">
+            <span id="statusBadge" class="badge">Ready</span>
+            <button id="copyBtn" type="button" class="icon-btn" aria-label="Copy generated LaTeX" title="Copy generated LaTeX">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M16 1H6a2 2 0 0 0-2 2v12h2V3h10V1Zm3 4H10a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2Zm0 16H10V7h9v14Z"></path>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <textarea id="output" spellcheck="false" aria-label="Generated LaTeX output"></textarea>
+      </section>
+    </main>
+  </div>
+
+  <template id="assetTemplate">
+    <article class="asset-card">
+      <div class="asset-top">
+        <h3 class="asset-title"></h3>
+        <button type="button" class="ghost remove-asset">Remove</button>
+      </div>
+
+      <div class="form-grid three compact-grid">
+        <label>
+          Line title
+          <input data-field="assetTitle" type="text" placeholder="Line 1" />
+        </label>
+        <label>
+          Serialized?
+          <select data-field="serialized">
+            <option value="yes">Yes</option>
+            <option value="no">No</option>
+          </select>
+        </label>
+        <label>
+          Qty
+          <input data-field="quantity" type="number" min="1" step="1" placeholder="1" />
+        </label>
+        <label>
+          Serial number / internal ref
+          <input data-field="serial" type="text" placeholder="S6MR0115000178" />
+        </label>
+        <label>
+          Item / unit description
+          <input data-field="item" type="text" placeholder="SPYDER MR-6 .68 CAL MARKER" />
+        </label>
+        <label data-modes="invoice">
+          Amount (R)
+          <input data-field="amount" type="number" min="0" step="0.01" placeholder="75.00" />
+        </label>
+      </div>
+
+      <div class="form-grid two compact-grid" data-modes="withdrawal">
+        <label>
+          Condition out
+          <input data-field="conditionOut" type="text" placeholder="Serviceable / new / as received" />
+        </label>
+        <label>
+          Intended use
+          <input data-field="intendedUse" type="text" placeholder="Repair / testing / spares / sale support" />
+        </label>
+      </div>
+
+      <div class="form-grid" data-modes="jobcard invoice">
+        <label>
+          Fault / issue
+          <textarea data-field="fault" rows="4" placeholder="Describe the fault or issue"></textarea>
+        </label>
+        <label>
+          Work performed / line description
+          <textarea data-field="workPerformed" rows="4" placeholder="Describe the work performed or line description"></textarea>
+        </label>
+        <label>
+          Notes / technical observations
+          <textarea data-field="notes" rows="4" placeholder="One note per line"></textarea>
+        </label>
+      </div>
+    </article>
+  </template>
+
+  <script src="templates.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

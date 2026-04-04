@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Vanguard Blade and Bolt icon">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1d2328"/>
+      <stop offset="100%" stop-color="#2f3a40"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <rect x="58" y="58" width="396" height="396" rx="84" fill="none" stroke="#9a6c3a" stroke-width="16"/>
+  <path d="M148 150h72l36 154 34-108h74l-76 166h-57z" fill="#f4eee7"/>
+  <path d="M165 350h182" stroke="#9a6c3a" stroke-width="18" stroke-linecap="round"/>
+</svg>
