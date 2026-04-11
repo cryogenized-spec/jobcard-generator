@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Handshake Ledger icon">
+  <rect width="512" height="512" rx="96" fill="#0f172a" />
+  <path d="M120 166h110v180H120z" fill="#334155" />
+  <path d="M282 166h110v180H282z" fill="#1e293b" />
+  <path d="M146 230h70v50h-70zm150 0h70v50h-70z" fill="#f8fafc" />
+  <path d="M198 296h116l22 50H176z" fill="#94a3b8" />
+</svg>
