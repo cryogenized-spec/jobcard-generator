@@ -1,11 +1,5 @@
-const CACHE_NAME = 'handshake-ledger-v2';
-const BASE_PATH = new URL(self.registration.scope).pathname;
-const ASSETS_TO_CACHE = [
-  BASE_PATH,
-  `${BASE_PATH}index.html`,
-  `${BASE_PATH}manifest.webmanifest`,
-  `${BASE_PATH}icons/app-icon.svg`
-];
+const CACHE_NAME = 'handshake-ledger-v1';
+const ASSETS_TO_CACHE = ['/', '/index.html', '/manifest.webmanifest', '/icons/app-icon.svg'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS_TO_CACHE)));
@@ -38,7 +32,7 @@ self.addEventListener('fetch', (event) => {
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseClone));
           return response;
         })
-        .catch(() => caches.match(`${BASE_PATH}index.html`));
+        .catch(() => caches.match('/index.html'));
     })
   );
 });

@@ -1,77 +1,71 @@
 # Handshake Ledger
 
-Internal, mobile-first operations ledger for Vanguard Blade & Bolt and NeonSales.
+Handshake Ledger is a **mobile-first internal operational web app** used by:
 
-## What v1 includes
+- **Vanguard Blade & Bolt (VBB)**
+- **NeonSales**
 
-- Email/password auth with profile roles: `workshop`, `neonsales`, `viewer`
-- Jobs, transfers, approvals, stock, and consumable usage logging
-- CSV export for `jobs`, `transfers`, `transfer_lines`, `stock_positions`, `consumptions`, `assets`, and `items`
-- CSV bootstrap import for `items`, `assets`, and `stock_positions`
-- Audit log panel for operational trace visibility
-- Installable PWA (manifest + service worker)
+It tracks custody movements, consumable usage, and job-linked workshop activity with a confirmation workflow.
 
-## Required environment variables
+## Stack
 
-Create `.env` (copy from `.env.example`):
+- Vite
+- React + TypeScript
+- Tailwind CSS
+- Supabase (Auth + Postgres)
+- PWA (manifest + service worker)
+
+## Auth flow (v1)
+
+- Email + password only
+- If not signed in: show Sign In / Sign Up screens
+- If signed in but missing profile data (`display_name`, `role`): force profile setup
+- If signed in and profile is complete: enter the app
+
+Supported roles:
+
+- `workshop`
+- `neonsales`
+- `viewer`
+
+## Screens (placeholder)
+
+- Dashboard
+- Jobs
+- Transfers
+- Approvals
+- Stock
+- Settings
+
+## Environment variables
+
+Copy `.env.example` to `.env` and fill values:
+
+```bash
+cp .env.example .env
+```
 
 ```env
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key
-VITE_BASE_PATH=/
 ```
 
-- `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are required for runtime.
-- `VITE_BASE_PATH` should be `/` for root hosting, or `/<repo-name>/` for GitHub Pages/project-subpath hosting.
-
-Optional development variable:
-
-```env
-VITE_ENABLE_DEMO_SEED=true
-```
-
-When enabled, Settings shows a button to insert simple demo seed data.
-
-## Local run
+## Run locally
 
 ```bash
 npm install
 npm run dev
 ```
 
-## Production build
+## Build
 
 ```bash
 npm run build
 npm run preview
 ```
 
-Build output is generated in `dist/`.
+## Database schema
 
-## Deployment notes
-
-### Static frontend hosting (GitHub Pages / Netlify / Cloudflare Pages / Vercel static)
-
-This frontend is static and can be deployed from `dist/`.
-
-For GitHub Pages (project site):
-
-1. Set `VITE_BASE_PATH=/your-repo-name/` in build environment.
-2. Run `npm run build`.
-3. Publish `dist/` as the Pages artifact.
-
-For root-domain hosting (e.g., `https://app.example.com/`), keep `VITE_BASE_PATH=/`.
-
-### Backend assumption
-
-The app depends on Supabase (Auth + Postgres). Deploying only static files is not enough by itself:
-
-- Supabase project must be provisioned and reachable from browsers.
-- `supabase/schema.sql` must be applied.
-- Supabase Auth URL settings must include your deployed frontend origin (and callback URLs where required).
-
-## Database
-
-Apply schema from:
+A production-sensible relational schema is included at:
 
 - `supabase/schema.sql`
