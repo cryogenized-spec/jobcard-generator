@@ -1,46 +1,71 @@
-# Vanguard Blade & Bolt Workshop Paperwork Generator
+# Handshake Ledger
 
-Version 2 of the static paperwork generator.
+Handshake Ledger is a **mobile-first internal operational web app** used by:
 
-## Included document types
-- Stock withdrawal / issue record
-- Repair job card
-- Invoice
+- **Vanguard Blade & Bolt (VBB)**
+- **NeonSales**
 
-## What it does
-- Keeps **Vanguard Blade & Bolt** business details fixed in the templates
-- Loads **NeonSales** as the default client
-- Supports **serialized** and **unserialized** line items
-- Generates **LuaLaTeX** for the active document type
-- Lets you **copy** the generated code in one tap
-- Lets you **download** the generated code as a `.tex` file
-- Works as an installable **PWA** with offline caching
+It tracks custody movements, consumable usage, and job-linked workshop activity with a confirmation workflow.
 
-## Files
-- `index.html` – UI shell
-- `style.css` – styling
-- `app.js` – form logic, mode switching, output generation, copy/download actions
-- `templates.js` – defaults plus LuaLaTeX renderers
-- `manifest.json` – PWA manifest
-- `sw.js` – service worker
-- `icon.svg` – app icon
-- `.nojekyll` – GitHub Pages compatibility
+## Stack
 
-## Publish on GitHub Pages
-1. Create a new GitHub repository.
-2. Upload all files from this folder into the repository root.
-3. Commit the files.
-4. Open **Settings -> Pages**.
-5. Under **Build and deployment**, choose **Deploy from a branch**.
-6. Select the `main` branch and the `/ (root)` folder.
-7. Save.
+- Vite
+- React + TypeScript
+- Tailwind CSS
+- Supabase (Auth + Postgres)
+- PWA (manifest + service worker)
 
-Your app will then be available at the GitHub Pages URL for that repository.
+## Auth flow (v1)
 
-## Change the fixed constants
-Edit these in `templates.js`:
-- `BUSINESS`
-- `DEFAULTS`
+- Email + password only
+- If not signed in: show Sign In / Sign Up screens
+- If signed in but missing profile data (`display_name`, `role`): force profile setup
+- If signed in and profile is complete: enter the app
 
-## Notes
-If you later want the invoice output to match your saved invoice template *exactly*, the current invoice renderer can be swapped out with that house template very easily.
+Supported roles:
+
+- `workshop`
+- `neonsales`
+- `viewer`
+
+## Screens (placeholder)
+
+- Dashboard
+- Jobs
+- Transfers
+- Approvals
+- Stock
+- Settings
+
+## Environment variables
+
+Copy `.env.example` to `.env` and fill values:
+
+```bash
+cp .env.example .env
+```
+
+```env
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key
+```
+
+## Run locally
+
+```bash
+npm install
+npm run dev
+```
+
+## Build
+
+```bash
+npm run build
+npm run preview
+```
+
+## Database schema
+
+A production-sensible relational schema is included at:
+
+- `supabase/schema.sql`
