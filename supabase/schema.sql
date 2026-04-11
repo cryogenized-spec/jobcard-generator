@@ -64,91 +64,115 @@ create table if not exists customers (
   updated_at timestamptz not null default now()
 );
 
--- items: item catalog for consumables, tools, and asset types.
+-- items: catalog definitions for consumables, tools, controlled issue lines, and asset types.
 create table if not exists items (
   id uuid primary key default gen_random_uuid(),
-  sku text unique,
+  code text not null unique,
   name text not null,
+  category text not null,
   control_type control_type not null,
-  unit_of_measure text not null default 'each',
+  serialized boolean not null default false,
+  unit text not null default 'each',
+  billable_by_default boolean not null default false,
+  default_cost numeric(12,2) not null default 0 check (default_cost >= 0),
+  notes text,
   is_active boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
+create index if not exists idx_items_code on items(code);
+create index if not exists idx_items_category on items(category);
 create index if not exists idx_items_control_type on items(control_type);
+create index if not exists idx_items_serialized on items(serialized);
 create index if not exists idx_items_active on items(is_active);
 
--- assets: individual serialized physical units tied to an item definition.
+-- assets: individual tracked units (tools or customer-owned units) linked to an item definition.
 create table if not exists assets (
   id uuid primary key default gen_random_uuid(),
+  asset_code text not null unique,
   item_id uuid not null references items(id) on delete restrict,
-  asset_tag text not null unique,
   serial_number text,
+  internal_ref text,
+  owner_customer_id uuid references customers(id) on delete set null,
   current_location location_type not null default 'Workshop',
-  current_customer_id uuid references customers(id) on delete set null,
+  current_status text not null default 'in_service' check (current_status in ('in_service', 'in_transit', 'on_job', 'returned', 'retired')),
+  notes text,
   is_active boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
+create index if not exists idx_assets_asset_code on assets(asset_code);
 create index if not exists idx_assets_item_id on assets(item_id);
 create index if not exists idx_assets_location on assets(current_location);
+create index if not exists idx_assets_status on assets(current_status);
 
 -- jobs: workshop jobs operated for customer-facing execution.
 create table if not exists jobs (
   id uuid primary key default gen_random_uuid(),
-  customer_id uuid not null references customers(id) on delete restrict,
   job_code text not null unique,
-  title text not null,
-  status text not null default 'open' check (status in ('open', 'in_progress', 'closed', 'cancelled')),
-  opened_by uuid references profiles(id) on delete set null,
-  assigned_to uuid references profiles(id) on delete set null,
-  started_at timestamptz,
-  due_at timestamptz,
-  closed_at timestamptz,
+  customer_id uuid not null references customers(id) on delete restrict,
+  asset_id uuid references assets(id) on delete set null,
+  date_opened date not null default current_date,
+  date_updated timestamptz not null default now(),
+  status text not null default 'open' check (status in ('open', 'in_progress', 'waiting_parts', 'completed', 'closed')),
+  fault_reported text not null,
+  work_summary text,
+  invoice_number text,
+  cost_treatment text not null default 'billable' check (cost_treatment in ('warranty', 'billable', 'internal', 'goodwill')),
+  notes text,
+  technician_id uuid not null references profiles(id) on delete restrict,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
 create index if not exists idx_jobs_customer_id on jobs(customer_id);
+create index if not exists idx_jobs_asset_id on jobs(asset_id);
+create index if not exists idx_jobs_technician_id on jobs(technician_id);
 create index if not exists idx_jobs_status on jobs(status);
+create index if not exists idx_jobs_date_opened on jobs(date_opened desc);
+create index if not exists idx_jobs_job_code on jobs(job_code);
 
--- transfers: declaration header for custody movements.
+-- transfers: declaration header for movement/usage declared by VBB and later confirmed by NeonSales.
 create table if not exists transfers (
   id uuid primary key default gen_random_uuid(),
-  reference_no text not null unique,
+  transfer_code text not null unique,
+  job_id uuid references jobs(id) on delete set null,
+  direction text not null check (direction in ('neonsales_to_workshop', 'workshop_to_neonsales', 'customer_to_workshop', 'workshop_to_customer', 'consumed_on_job')),
+  status transfer_status not null default 'submitted',
+  declared_by uuid not null references profiles(id) on delete restrict,
+  confirmed_by uuid references profiles(id) on delete set null,
   from_location location_type not null,
   to_location location_type not null,
-  status transfer_status not null default 'submitted',
-  submitted_by uuid not null references profiles(id) on delete restrict,
-  reviewed_by uuid references profiles(id) on delete set null,
-  reason text,
-  rejection_reason text,
-  submitted_at timestamptz not null default now(),
-  reviewed_at timestamptz,
+  notes text,
+  declared_at timestamptz not null default now(),
+  confirmed_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   check (from_location <> to_location)
 );
 
+create index if not exists idx_transfers_code on transfers(transfer_code);
+create index if not exists idx_transfers_job_id on transfers(job_id);
 create index if not exists idx_transfers_status on transfers(status);
-create index if not exists idx_transfers_submitted_by on transfers(submitted_by);
-create index if not exists idx_transfers_reviewed_by on transfers(reviewed_by);
-create index if not exists idx_transfers_submitted_at on transfers(submitted_at desc);
+create index if not exists idx_transfers_direction on transfers(direction);
+create index if not exists idx_transfers_declared_by on transfers(declared_by);
+create index if not exists idx_transfers_confirmed_by on transfers(confirmed_by);
+create index if not exists idx_transfers_declared_at on transfers(declared_at desc);
 
--- transfer_lines: transfer line items with either asset-level or quantity-based movement.
+-- transfer_lines: item or asset lines linked to a transfer; quantity is always explicit.
 create table if not exists transfer_lines (
   id uuid primary key default gen_random_uuid(),
   transfer_id uuid not null references transfers(id) on delete cascade,
-  item_id uuid not null references items(id) on delete restrict,
+  item_id uuid references items(id) on delete restrict,
   asset_id uuid references assets(id) on delete restrict,
-  job_id uuid references jobs(id) on delete set null,
   quantity numeric(12,2) not null default 1 check (quantity > 0),
+  cost_treatment text not null default 'billable' check (cost_treatment in ('warranty', 'billable', 'internal', 'goodwill')),
   notes text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  check ((asset_id is null and quantity >= 0.01) or (asset_id is not null and quantity = 1))
+  check ((item_id is null) <> (asset_id is null))
 );
 
 create index if not exists idx_transfer_lines_transfer_id on transfer_lines(transfer_id);
@@ -161,13 +185,11 @@ create table if not exists stock_positions (
   id uuid primary key default gen_random_uuid(),
   item_id uuid not null references items(id) on delete restrict,
   location location_type not null,
-  customer_id uuid references customers(id) on delete set null,
-  on_hand_quantity numeric(12,2) not null default 0 check (on_hand_quantity >= 0),
-  reserved_quantity numeric(12,2) not null default 0 check (reserved_quantity >= 0),
+  quantity numeric(12,2) not null default 0 check (quantity >= 0),
   updated_by uuid references profiles(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  unique (item_id, location, customer_id)
+  unique (item_id, location)
 );
 
 create index if not exists idx_stock_positions_item_id on stock_positions(item_id);
