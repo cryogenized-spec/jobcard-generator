@@ -60,11 +60,13 @@ function ActivePage({
   current,
   currentUser,
   currentRole,
+  currentUserId,
   onSignOut
 }: {
   current: PageKey;
   currentUser: string;
-  currentRole: string;
+  currentRole: AppRole;
+  currentUserId: string;
   onSignOut: () => Promise<void>;
 }) {
   switch (current) {
@@ -75,7 +77,7 @@ function ActivePage({
     case 'transfers':
       return <TransfersPage />;
     case 'approvals':
-      return <ApprovalsPage />;
+      return <ApprovalsPage currentUserId={currentUserId} currentRole={currentRole} />;
     case 'stock':
       return <StockPage />;
     case 'settings':
@@ -310,6 +312,7 @@ export default function App() {
         current={current}
         currentUser={profile.display_name || session.user.email || 'Unknown user'}
         currentRole={profile.role}
+        currentUserId={session.user.id}
         onSignOut={signOut}
       />
     </MobileShell>
