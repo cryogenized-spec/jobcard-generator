@@ -98,13 +98,14 @@ export default function App() {
   const [authMode, setAuthMode] = useState<AuthMode>('sign-in');
 
   useEffect(() => {
-    if (!supabase) {
+    const client = supabase;
+    if (!client) {
       setLoading(false);
       return;
     }
 
     const bootstrap = async () => {
-      const { data, error: sessionError } = await supabase.auth.getSession();
+      const { data, error: sessionError } = await client.auth.getSession();
       if (sessionError) {
         setError(formatAuthError(sessionError));
       }
@@ -116,7 +117,7 @@ export default function App() {
 
     const {
       data: { subscription }
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    } = client.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);
       setError(null);
       setInfo(null);
@@ -126,13 +127,14 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!supabase || !session?.user.id) {
+    const client = supabase;
+    if (!client || !session?.user.id) {
       setProfile(null);
       return;
     }
 
     const loadProfile = async () => {
-      const { data, error: profileError } = await supabase
+      const { data, error: profileError } = await client
         .from('profiles')
         .select('id, display_name, role')
         .eq('id', session.user.id)

@@ -178,9 +178,8 @@ create table if not exists transfer_lines (
 create index if not exists idx_transfer_lines_transfer_id on transfer_lines(transfer_id);
 create index if not exists idx_transfer_lines_item_id on transfer_lines(item_id);
 create index if not exists idx_transfer_lines_asset_id on transfer_lines(asset_id);
-create index if not exists idx_transfer_lines_job_id on transfer_lines(job_id);
 
--- stock_positions: current on-hand/reserved quantity by item and location.
+-- stock_positions: current quantity by item and location (primarily for non-serialized lines).
 create table if not exists stock_positions (
   id uuid primary key default gen_random_uuid(),
   item_id uuid not null references items(id) on delete restrict,
@@ -201,15 +200,16 @@ create table if not exists consumptions (
   job_id uuid not null references jobs(id) on delete restrict,
   item_id uuid not null references items(id) on delete restrict,
   quantity numeric(12,2) not null check (quantity > 0),
-  consumed_at timestamptz not null default now(),
-  recorded_by uuid not null references profiles(id) on delete restrict,
+  cost_treatment text not null default 'billable' check (cost_treatment in ('warranty', 'billable', 'internal', 'goodwill')),
   notes text,
+  created_by uuid not null references profiles(id) on delete restrict,
   created_at timestamptz not null default now()
 );
 
 create index if not exists idx_consumptions_job_id on consumptions(job_id);
 create index if not exists idx_consumptions_item_id on consumptions(item_id);
-create index if not exists idx_consumptions_consumed_at on consumptions(consumed_at desc);
+create index if not exists idx_consumptions_created_by on consumptions(created_by);
+create index if not exists idx_consumptions_created_at on consumptions(created_at desc);
 
 -- audit_log: append-only trace for important state-changing actions.
 create table if not exists audit_log (
@@ -250,3 +250,308 @@ for each row execute function set_updated_at();
 
 create trigger trg_stock_positions_updated_at before update on stock_positions
 for each row execute function set_updated_at();
+
+-- =========================
+-- Row Level Security (RLS)
+-- =========================
+-- Conservative role model:
+-- - workshop: create/update own operational records
+-- - neonsales: review and approve transfers; broader operational write access where needed
+-- - viewer: read-only
+
+-- Helper: resolve current authenticated user's app role from profiles.
+create or replace function current_app_role()
+returns app_role
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select role from profiles where id = auth.uid();
+$$;
+
+create or replace function is_workshop()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select current_app_role() = 'workshop'::app_role;
+$$;
+
+create or replace function is_neonsales()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select current_app_role() = 'neonsales'::app_role;
+$$;
+
+create or replace function is_viewer()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select current_app_role() = 'viewer'::app_role;
+$$;
+
+-- Enable RLS on all application tables.
+alter table profiles enable row level security;
+alter table customers enable row level security;
+alter table items enable row level security;
+alter table assets enable row level security;
+alter table jobs enable row level security;
+alter table transfers enable row level security;
+alter table transfer_lines enable row level security;
+alter table stock_positions enable row level security;
+alter table consumptions enable row level security;
+alter table audit_log enable row level security;
+
+-- Drop policies for idempotent schema re-runs.
+drop policy if exists profiles_select_self_or_neonsales on profiles;
+drop policy if exists profiles_insert_self_viewer on profiles;
+drop policy if exists profiles_update_self_display_or_neonsales on profiles;
+
+drop policy if exists customers_select_authenticated on customers;
+drop policy if exists customers_write_neonsales on customers;
+
+drop policy if exists items_select_authenticated on items;
+drop policy if exists items_write_neonsales on items;
+
+drop policy if exists assets_select_authenticated on assets;
+drop policy if exists assets_write_workshop_or_neonsales on assets;
+
+drop policy if exists jobs_select_authenticated on jobs;
+drop policy if exists jobs_insert_workshop_own on jobs;
+drop policy if exists jobs_update_workshop_own_or_neonsales on jobs;
+
+drop policy if exists transfers_select_authenticated on transfers;
+drop policy if exists transfers_insert_workshop_own on transfers;
+drop policy if exists transfers_update_workshop_submitted_own on transfers;
+drop policy if exists transfers_update_neonsales_confirm on transfers;
+
+drop policy if exists transfer_lines_select_authenticated on transfer_lines;
+drop policy if exists transfer_lines_mutate_workshop_own_submitted on transfer_lines;
+
+drop policy if exists stock_positions_select_authenticated on stock_positions;
+drop policy if exists stock_positions_write_workshop_or_neonsales on stock_positions;
+
+drop policy if exists consumptions_select_authenticated on consumptions;
+drop policy if exists consumptions_insert_workshop_own on consumptions;
+drop policy if exists consumptions_update_workshop_own on consumptions;
+drop policy if exists consumptions_delete_workshop_own on consumptions;
+
+drop policy if exists audit_log_select_authenticated on audit_log;
+drop policy if exists audit_log_insert_operational_roles on audit_log;
+
+-- profiles: controlled read, conservative write.
+-- - everyone can read their own profile
+-- - neonsales can read all profiles for operational visibility
+create policy profiles_select_self_or_neonsales
+on profiles
+for select
+using (id = auth.uid() or is_neonsales());
+
+-- New users may create their own baseline profile as viewer only.
+create policy profiles_insert_self_viewer
+on profiles
+for insert
+with check (id = auth.uid() and role = 'viewer'::app_role);
+
+-- Users may edit their own display/profile row as long as they do not change role;
+-- neonsales may edit profiles broadly (e.g., role assignment, activation).
+create policy profiles_update_self_display_or_neonsales
+on profiles
+for update
+using (id = auth.uid() or is_neonsales())
+with check (
+  (id = auth.uid() and role = current_app_role())
+  or is_neonsales()
+);
+
+-- customers: readable by all authenticated users; writable only by neonsales.
+create policy customers_select_authenticated
+on customers
+for select
+using (auth.uid() is not null);
+
+create policy customers_write_neonsales
+on customers
+for all
+using (is_neonsales())
+with check (is_neonsales());
+
+-- items: readable by all authenticated users; writable only by neonsales.
+create policy items_select_authenticated
+on items
+for select
+using (auth.uid() is not null);
+
+create policy items_write_neonsales
+on items
+for all
+using (is_neonsales())
+with check (is_neonsales());
+
+-- assets: readable by all authenticated users; mutable by workshop/neonsales.
+create policy assets_select_authenticated
+on assets
+for select
+using (auth.uid() is not null);
+
+create policy assets_write_workshop_or_neonsales
+on assets
+for all
+using (is_workshop() or is_neonsales())
+with check (is_workshop() or is_neonsales());
+
+-- jobs: workshop can create/update own jobs, neonsales may also update for operational correction.
+create policy jobs_select_authenticated
+on jobs
+for select
+using (auth.uid() is not null);
+
+create policy jobs_insert_workshop_own
+on jobs
+for insert
+with check (is_workshop() and technician_id = auth.uid());
+
+create policy jobs_update_workshop_own_or_neonsales
+on jobs
+for update
+using ((is_workshop() and technician_id = auth.uid()) or is_neonsales())
+with check ((is_workshop() and technician_id = auth.uid()) or is_neonsales());
+
+-- transfers: all authenticated users can read.
+create policy transfers_select_authenticated
+on transfers
+for select
+using (auth.uid() is not null);
+
+-- workshop creates declarations as submitted and self-declared only.
+create policy transfers_insert_workshop_own
+on transfers
+for insert
+with check (
+  is_workshop()
+  and declared_by = auth.uid()
+  and status = 'submitted'::transfer_status
+  and confirmed_by is null
+  and confirmed_at is null
+);
+
+-- workshop may edit its own still-submitted declarations.
+create policy transfers_update_workshop_submitted_own
+on transfers
+for update
+using (
+  is_workshop()
+  and declared_by = auth.uid()
+  and status = 'submitted'::transfer_status
+  and confirmed_by is null
+)
+with check (
+  is_workshop()
+  and declared_by = auth.uid()
+  and status = 'submitted'::transfer_status
+  and confirmed_by is null
+);
+
+-- neonsales may confirm submitted transfers as approved/rejected.
+create policy transfers_update_neonsales_confirm
+on transfers
+for update
+using (
+  is_neonsales()
+  and status = 'submitted'::transfer_status
+)
+with check (
+  is_neonsales()
+  and status in ('approved'::transfer_status, 'rejected'::transfer_status, 'returned'::transfer_status)
+  and confirmed_by = auth.uid()
+  and confirmed_at is not null
+);
+
+-- transfer lines: readable by authenticated users.
+create policy transfer_lines_select_authenticated
+on transfer_lines
+for select
+using (auth.uid() is not null);
+
+-- workshop mutates lines only for own parent transfer while still submitted.
+create policy transfer_lines_mutate_workshop_own_submitted
+on transfer_lines
+for all
+using (
+  is_workshop()
+  and exists (
+    select 1
+    from transfers t
+    where t.id = transfer_lines.transfer_id
+      and t.declared_by = auth.uid()
+      and t.status = 'submitted'::transfer_status
+  )
+)
+with check (
+  is_workshop()
+  and exists (
+    select 1
+    from transfers t
+    where t.id = transfer_lines.transfer_id
+      and t.declared_by = auth.uid()
+      and t.status = 'submitted'::transfer_status
+  )
+);
+
+-- stock positions: readable by authenticated users; writable by workshop/neonsales.
+create policy stock_positions_select_authenticated
+on stock_positions
+for select
+using (auth.uid() is not null);
+
+create policy stock_positions_write_workshop_or_neonsales
+on stock_positions
+for all
+using (is_workshop() or is_neonsales())
+with check (is_workshop() or is_neonsales());
+
+-- consumptions: readable by authenticated users; workshop can manage own records.
+create policy consumptions_select_authenticated
+on consumptions
+for select
+using (auth.uid() is not null);
+
+create policy consumptions_insert_workshop_own
+on consumptions
+for insert
+with check (is_workshop() and created_by = auth.uid());
+
+create policy consumptions_update_workshop_own
+on consumptions
+for update
+using (is_workshop() and created_by = auth.uid())
+with check (is_workshop() and created_by = auth.uid());
+
+create policy consumptions_delete_workshop_own
+on consumptions
+for delete
+using (is_workshop() and created_by = auth.uid());
+
+-- audit log: authenticated read; operational roles can append rows only for themselves.
+create policy audit_log_select_authenticated
+on audit_log
+for select
+using (auth.uid() is not null);
+
+create policy audit_log_insert_operational_roles
+on audit_log
+for insert
+with check (
+  (is_workshop() or is_neonsales())
+  and actor_profile_id = auth.uid()
+);

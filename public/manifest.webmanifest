@@ -1,14 +1,18 @@
 {
+  "id": ".",
   "name": "Handshake Ledger",
-  "short_name": "Handshake",
+  "short_name": "Ledger",
   "description": "Shared operational ledger for Vanguard Blade & Bolt and NeonSales.",
-  "start_url": "/",
+  "start_url": ".",
+  "scope": ".",
   "display": "standalone",
+  "orientation": "portrait",
   "background_color": "#f8fafc",
   "theme_color": "#0f172a",
+  "categories": ["business", "productivity"],
   "icons": [
     {
-      "src": "/icons/app-icon.svg",
+      "src": "icons/app-icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any maskable"

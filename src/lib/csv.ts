@@ -11,7 +11,7 @@ export function toCsv(rows: Array<Record<string, unknown>>): string {
   const escapeCell = (value: unknown) => {
     if (value === null || value === undefined) return '';
     const text = typeof value === 'object' ? JSON.stringify(value) : String(value);
-    const escaped = text.replaceAll('"', '""');
+    const escaped = text.replace(/"/g, '""');
     return /[",\n]/.test(escaped) ? `"${escaped}"` : escaped;
   };
 

@@ -21,6 +21,17 @@ type JobRecord = {
 };
 
 type LookupOption = { id: string; label: string; secondary?: string };
+type ConsumableItem = { id: string; code: string; name: string; unit: string };
+type ConsumptionRecord = {
+  id: string;
+  job_id: string;
+  item_id: string;
+  quantity: number;
+  cost_treatment: CostTreatment;
+  notes: string | null;
+  created_by: string;
+  created_at: string;
+};
 
 type JobFormState = {
   job_code: string;
@@ -58,6 +69,8 @@ export function JobsPage() {
   const [customers, setCustomers] = useState<LookupOption[]>([]);
   const [assets, setAssets] = useState<LookupOption[]>([]);
   const [technicians, setTechnicians] = useState<LookupOption[]>([]);
+  const [consumableItems, setConsumableItems] = useState<ConsumableItem[]>([]);
+  const [consumptionsByJobId, setConsumptionsByJobId] = useState<Record<string, ConsumptionRecord[]>>({});
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<'all' | JobStatus>('all');
   const [searchTerm, setSearchTerm] = useState('');
@@ -66,10 +79,20 @@ export function JobsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [consumptionError, setConsumptionError] = useState<string | null>(null);
+  const [consumptionSaving, setConsumptionSaving] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [consumptionForm, setConsumptionForm] = useState({
+    item_id: '',
+    quantity: '1',
+    cost_treatment: 'billable' as CostTreatment,
+    notes: ''
+  });
 
   const customerById = useMemo(() => new Map(customers.map((c) => [c.id, c.label])), [customers]);
   const assetById = useMemo(() => new Map(assets.map((a) => [a.id, a])), [assets]);
   const technicianById = useMemo(() => new Map(technicians.map((t) => [t.id, t.label])), [technicians]);
+  const consumableById = useMemo(() => new Map(consumableItems.map((item) => [item.id, item])), [consumableItems]);
 
   const selectedJob = useMemo(() => jobs.find((job) => job.id === selectedJobId) ?? null, [jobs, selectedJobId]);
 
@@ -102,14 +125,26 @@ export function JobsPage() {
     setLoading(true);
     setError(null);
 
-    const [jobsResult, customersResult, assetsResult, techResult] = await Promise.all([
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+    setCurrentUserId(user?.id ?? null);
+
+    const [jobsResult, customersResult, assetsResult, techResult, consumableItemsResult, consumptionsResult] = await Promise.all([
       supabase.from('jobs').select('*').order('date_updated', { ascending: false }),
       supabase.from('customers').select('id, name').eq('is_active', true).order('name'),
       supabase.from('assets').select('id, asset_code, serial_number').eq('is_active', true).order('asset_code'),
-      supabase.from('profiles').select('id, display_name').eq('role', 'workshop').eq('is_active', true)
+      supabase.from('profiles').select('id, display_name').eq('role', 'workshop').eq('is_active', true),
+      supabase
+        .from('items')
+        .select('id, code, name, unit')
+        .eq('control_type', 'Consumable')
+        .eq('is_active', true)
+        .order('name'),
+      supabase.from('consumptions').select('*').order('created_at', { ascending: false })
     ]);
 
-    if (jobsResult.error || customersResult.error || assetsResult.error || techResult.error) {
+    if (jobsResult.error || customersResult.error || assetsResult.error || techResult.error || consumableItemsResult.error || consumptionsResult.error) {
       setError('Failed to load jobs data. Please refresh and try again.');
       setLoading(false);
       return;
@@ -125,6 +160,14 @@ export function JobsPage() {
       }))
     );
     setTechnicians((techResult.data ?? []).map((row) => ({ id: row.id, label: row.display_name ?? 'Unnamed' })));
+    setConsumableItems((consumableItemsResult.data ?? []) as ConsumableItem[]);
+
+    const groupedConsumptions: Record<string, ConsumptionRecord[]> = {};
+    ((consumptionsResult.data ?? []) as ConsumptionRecord[]).forEach((entry) => {
+      groupedConsumptions[entry.job_id] = groupedConsumptions[entry.job_id] ?? [];
+      groupedConsumptions[entry.job_id].push(entry);
+    });
+    setConsumptionsByJobId(groupedConsumptions);
 
     setLoading(false);
   };
@@ -196,6 +239,66 @@ export function JobsPage() {
     await loadData();
     resetForm();
     setSaving(false);
+  };
+
+  const createConsumption = async () => {
+    if (!supabase || !selectedJobId || !currentUserId) {
+      setConsumptionError('Select a job and ensure you are signed in.');
+      return;
+    }
+    if (!consumptionForm.item_id || Number(consumptionForm.quantity) <= 0) {
+      setConsumptionError('Select a consumable and enter a quantity greater than zero.');
+      return;
+    }
+
+    setConsumptionSaving(true);
+    setConsumptionError(null);
+
+    const payload = {
+      job_id: selectedJobId,
+      item_id: consumptionForm.item_id,
+      quantity: Number(consumptionForm.quantity),
+      cost_treatment: consumptionForm.cost_treatment,
+      notes: consumptionForm.notes.trim() || null,
+      created_by: currentUserId
+    };
+
+    const { data: insertedConsumption, error: insertError } = await supabase
+      .from('consumptions')
+      .insert(payload)
+      .select('id, created_at')
+      .single();
+
+    if (insertError || !insertedConsumption) {
+      setConsumptionError('Could not save consumption entry. Please check values and retry.');
+      setConsumptionSaving(false);
+      return;
+    }
+
+    const selectedItem = consumableById.get(consumptionForm.item_id);
+    await supabase.from('audit_log').insert({
+      actor_profile_id: currentUserId,
+      action_type: 'consumption_logged',
+      entity_table: 'consumptions',
+      entity_id: insertedConsumption.id,
+      details: {
+        summary: `${selectedItem?.code ?? 'Item'} x ${payload.quantity} logged on ${selectedJob?.job_code ?? 'job'}`,
+        job_id: selectedJobId,
+        item_id: payload.item_id,
+        quantity: payload.quantity,
+        cost_treatment: payload.cost_treatment
+      }
+    });
+
+    setConsumptionForm({
+      item_id: '',
+      quantity: '1',
+      cost_treatment: 'billable',
+      notes: ''
+    });
+
+    await loadData();
+    setConsumptionSaving(false);
   };
 
   return (
@@ -427,6 +530,90 @@ export function JobsPage() {
               <dd className="font-medium text-slate-900">{selectedJob.invoice_number || '—'}</dd>
             </div>
           </dl>
+
+          <div className="mt-4 border-t border-slate-200 pt-4">
+            <h3 className="text-sm font-semibold text-slate-700">Consumable usage</h3>
+            <p className="mt-1 text-xs text-slate-500">
+              Log actual consumables used (e.g., O-rings, CO2 cartridges, PTFE tape, lubricants). Reusable tools should not be logged here.
+            </p>
+
+            <div className="mt-3 grid gap-2">
+              <select
+                className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+                value={consumptionForm.item_id}
+                onChange={(event) => setConsumptionForm((prev) => ({ ...prev, item_id: event.target.value }))}
+              >
+                <option value="">Select consumable item</option>
+                {consumableItems.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.code} · {item.name}
+                  </option>
+                ))}
+              </select>
+
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={consumptionForm.quantity}
+                  onChange={(event) => setConsumptionForm((prev) => ({ ...prev, quantity: event.target.value }))}
+                />
+                <select
+                  className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+                  value={consumptionForm.cost_treatment}
+                  onChange={(event) => setConsumptionForm((prev) => ({ ...prev, cost_treatment: event.target.value as CostTreatment }))}
+                >
+                  {costOptions.map((cost) => (
+                    <option key={cost} value={cost}>
+                      {cost}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <textarea
+                className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+                rows={2}
+                placeholder="Usage notes (optional)"
+                value={consumptionForm.notes}
+                onChange={(event) => setConsumptionForm((prev) => ({ ...prev, notes: event.target.value }))}
+              />
+
+              {consumptionError ? <p className="rounded-md bg-rose-50 p-2 text-sm text-rose-700">{consumptionError}</p> : null}
+
+              <button
+                type="button"
+                onClick={() => void createConsumption()}
+                disabled={consumptionSaving}
+                className="w-full rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+              >
+                {consumptionSaving ? 'Logging…' : 'Log consumable usage'}
+              </button>
+            </div>
+
+            <div className="mt-3 space-y-2">
+              {(consumptionsByJobId[selectedJob.id] ?? []).map((entry) => {
+                const item = consumableById.get(entry.item_id);
+                return (
+                  <div key={entry.id} className="rounded-md border border-slate-200 p-3 text-sm">
+                    <p className="font-medium text-slate-900">
+                      {item ? `${item.code} · ${item.name}` : 'Unknown consumable'} · Qty {entry.quantity}
+                      {item?.unit ? ` ${item.unit}` : ''}
+                    </p>
+                    <p className="text-xs text-slate-600">
+                      {entry.cost_treatment} · {new Date(entry.created_at).toLocaleString()}
+                    </p>
+                    {entry.notes ? <p className="text-xs text-slate-500">{entry.notes}</p> : null}
+                  </div>
+                );
+              })}
+              {(consumptionsByJobId[selectedJob.id] ?? []).length === 0 ? (
+                <p className="text-sm text-slate-600">No consumptions logged for this job yet.</p>
+              ) : null}
+            </div>
+          </div>
         </section>
       ) : null}
     </div>
