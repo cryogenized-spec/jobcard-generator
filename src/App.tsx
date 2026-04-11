@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { BottomNav } from './components/layout/BottomNav';
 import { MobileShell } from './components/layout/MobileShell';
-import type { PageKey } from './data/navigation';
+import { navigationItems, type PageKey } from './data/navigation';
 import { formatAuthError } from './lib/authErrors';
 import { supabase } from './lib/supabase';
 import { ApprovalsPage } from './pages/ApprovalsPage';
@@ -15,12 +15,6 @@ import { ProfileSetupPage } from './pages/auth/ProfileSetupPage';
 import { SignInPage } from './pages/auth/SignInPage';
 import { SignUpPage } from './pages/auth/SignUpPage';
 import { roles, type AppRole, type Profile } from './types/profile';
-
-type CompleteProfile = {
-  id: string;
-  display_name: string;
-  role: AppRole;
-};
 
 type AuthMode = 'sign-in' | 'sign-up';
 
@@ -51,24 +45,12 @@ const pageMeta: Record<PageKey, { title: string; subtitle: string }> = {
   }
 };
 
-function isProfileComplete(profile: Profile | null): profile is CompleteProfile {
+function isProfileComplete(profile: Profile | null): profile is Profile {
   if (!profile || !profile.display_name || !profile.role) return false;
   return roles.includes(profile.role);
 }
 
-function ActivePage({
-  current,
-  currentUser,
-  currentRole,
-  currentUserId,
-  onSignOut
-}: {
-  current: PageKey;
-  currentUser: string;
-  currentRole: AppRole;
-  currentUserId: string;
-  onSignOut: () => Promise<void>;
-}) {
+function ActivePage({ current }: { current: PageKey }) {
   switch (current) {
     case 'dashboard':
       return <DashboardPage />;
@@ -77,11 +59,11 @@ function ActivePage({
     case 'transfers':
       return <TransfersPage />;
     case 'approvals':
-      return <ApprovalsPage currentUserId={currentUserId} currentRole={currentRole} />;
+      return <ApprovalsPage />;
     case 'stock':
       return <StockPage />;
     case 'settings':
-      return <SettingsPage currentUser={currentUser} role={currentRole} onSignOut={onSignOut} />;
+      return <SettingsPage />;
     default:
       return null;
   }
@@ -306,15 +288,10 @@ export default function App() {
           Sign out
         </button>
       }
-      footer={<BottomNav current={current} onSelect={setCurrent} />}
     >
-      <ActivePage
-        current={current}
-        currentUser={profile.display_name || session.user.email || 'Unknown user'}
-        currentRole={profile.role}
-        currentUserId={session.user.id}
-        onSignOut={signOut}
-      />
+      <ActivePage current={current} />
+      <BottomNav current={current} onSelect={setCurrent} />
+      <p className="mt-3 text-center text-xs text-slate-500">{navigationItems.length} sections available.</p>
     </MobileShell>
   );
 }
