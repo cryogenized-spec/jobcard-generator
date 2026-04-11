@@ -178,8 +178,9 @@ create table if not exists transfer_lines (
 create index if not exists idx_transfer_lines_transfer_id on transfer_lines(transfer_id);
 create index if not exists idx_transfer_lines_item_id on transfer_lines(item_id);
 create index if not exists idx_transfer_lines_asset_id on transfer_lines(asset_id);
+create index if not exists idx_transfer_lines_job_id on transfer_lines(job_id);
 
--- stock_positions: current quantity by item and location (primarily for non-serialized lines).
+-- stock_positions: current on-hand/reserved quantity by item and location.
 create table if not exists stock_positions (
   id uuid primary key default gen_random_uuid(),
   item_id uuid not null references items(id) on delete restrict,
