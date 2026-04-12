@@ -1,46 +1,94 @@
-# Vanguard Blade & Bolt Workshop Paperwork Generator
+# Handshake Ledger
 
-Version 2 of the static paperwork generator.
+Internal, mobile-first operations ledger for Vanguard Blade & Bolt and NeonSales.
 
-## Included document types
-- Stock withdrawal / issue record
-- Repair job card
-- Invoice
+## What v1 includes
 
-## What it does
-- Keeps **Vanguard Blade & Bolt** business details fixed in the templates
-- Loads **NeonSales** as the default client
-- Supports **serialized** and **unserialized** line items
-- Generates **LuaLaTeX** for the active document type
-- Lets you **copy** the generated code in one tap
-- Lets you **download** the generated code as a `.tex` file
-- Works as an installable **PWA** with offline caching
+- Email/password auth with profile roles: `workshop`, `neonsales`, `viewer`
+- Jobs, transfers, approvals, stock, and consumable usage logging
+- CSV export for `jobs`, `transfers`, `transfer_lines`, `stock_positions`, `consumptions`, `assets`, and `items`
+- CSV bootstrap import for `items`, `assets`, and `stock_positions`
+- Audit log panel for operational trace visibility
+- Installable PWA (manifest + service worker)
 
-## Files
-- `index.html` – UI shell
-- `style.css` – styling
-- `app.js` – form logic, mode switching, output generation, copy/download actions
-- `templates.js` – defaults plus LuaLaTeX renderers
-- `manifest.json` – PWA manifest
-- `sw.js` – service worker
-- `icon.svg` – app icon
-- `.nojekyll` – GitHub Pages compatibility
+## Required environment variables
 
-## Publish on GitHub Pages
-1. Create a new GitHub repository.
-2. Upload all files from this folder into the repository root.
-3. Commit the files.
-4. Open **Settings -> Pages**.
-5. Under **Build and deployment**, choose **Deploy from a branch**.
-6. Select the `main` branch and the `/ (root)` folder.
-7. Save.
+Create `.env` (copy from `.env.example`):
 
-Your app will then be available at the GitHub Pages URL for that repository.
+```env
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key
+VITE_BASE_PATH=/
+```
 
-## Change the fixed constants
-Edit these in `templates.js`:
-- `BUSINESS`
-- `DEFAULTS`
+- `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are required for runtime.
+- `VITE_BASE_PATH` should be `/` for root hosting, or `/<repo-name>/` for GitHub Pages/project-subpath hosting.
 
-## Notes
-If you later want the invoice output to match your saved invoice template *exactly*, the current invoice renderer can be swapped out with that house template very easily.
+Optional development variable:
+
+```env
+VITE_ENABLE_DEMO_SEED=true
+```
+
+When enabled, Settings shows a button to insert simple demo seed data.
+
+## Local run
+
+```bash
+npm install
+npm run dev
+```
+
+## Production build
+
+```bash
+npm run build
+npm run preview
+```
+
+Build output is generated in `dist/`.
+
+## Deployment notes
+
+### Vercel (recommended for this project)
+
+This frontend deploys cleanly as a static Vite build on Vercel.
+
+Vercel project settings:
+
+- Framework preset: **Vite**
+- Build command: `npm run build`
+- Output directory: `dist`
+- Install command: `npm install`
+
+Environment variables (Production/Preview as needed):
+
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+- `VITE_BASE_PATH=/` (keep `/` for Vercel custom domain/subdomain deploys)
+
+### Other static frontend hosts (GitHub Pages / Netlify / Cloudflare Pages)
+
+This frontend is static and can be deployed from `dist/`.
+
+For GitHub Pages (project site):
+
+1. Set `VITE_BASE_PATH=/your-repo-name/` in build environment.
+2. Run `npm run build`.
+3. Publish `dist/` as the Pages artifact.
+
+For root-domain hosting (e.g., `https://app.example.com/`), keep `VITE_BASE_PATH=/`.
+
+### Backend assumption
+
+The app depends on Supabase (Auth + Postgres). Deploying only static files is not enough by itself:
+
+- Supabase project must be provisioned and reachable from browsers.
+- `supabase/schema.sql` must be applied.
+- Supabase Auth URL settings must include your deployed frontend origin (and callback URLs where required).
+
+## Database
+
+Apply schema from:
+
+- `supabase/schema.sql`
