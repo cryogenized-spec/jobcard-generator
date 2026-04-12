@@ -35,12 +35,13 @@ export function SettingsPage({ currentUser, role, onSignOut }: SettingsPageProps
   const isDemoSeedEnabled = import.meta.env.VITE_ENABLE_DEMO_SEED === 'true';
 
   useEffect(() => {
-    if (!supabase) return;
+    const client = supabase;
+    if (!client) return;
 
     const loadAudit = async () => {
       const [auditResult, profilesResult] = await Promise.all([
-        supabase.from('audit_log').select('*').order('occurred_at', { ascending: false }).limit(40),
-        supabase.from('profiles').select('id, display_name')
+        client.from('audit_log').select('*').order('occurred_at', { ascending: false }).limit(40),
+        client.from('profiles').select('id, display_name')
       ]);
 
       if (auditResult.error || profilesResult.error) {
@@ -139,7 +140,7 @@ export function SettingsPage({ currentUser, role, onSignOut }: SettingsPageProps
       item_id: itemByCode.get(row.item_code) ?? row.item_id,
       serial_number: row.serial_number || null,
       internal_ref: row.internal_ref || null,
-      owner_customer_id: customerByName.get(row.owner_customer_name) ?? row.owner_customer_id || null,
+      owner_customer_id: (customerByName.get(row.owner_customer_name) ?? row.owner_customer_id) || null,
       current_location: row.current_location || 'Workshop',
       current_status: row.current_status || 'in_service',
       notes: row.notes || null,
